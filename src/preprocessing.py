@@ -1,5 +1,6 @@
 """
 Data preprocessing utilities for the recommendation system.
+Includes feature engineering and data cleaning.
 """
 
 import pandas as pd
@@ -8,15 +9,16 @@ from sklearn.preprocessing import StandardScaler
 from typing import Tuple
 
 
-def preprocess_movies(movies_df: pd.DataFrame) -> pd.DataFrame:
+def preprocess_movies(movies_df: pd.DataFrame, ratings_df: pd.DataFrame = None) -> pd.DataFrame:
     """
-    Preprocess movies data.
+    Preprocess movies data with derived features.
     
     Args:
         movies_df: Raw movies dataframe
+        ratings_df: Optional ratings dataframe for popularity calculation
         
     Returns:
-        Preprocessed movies dataframe
+        Preprocessed movies dataframe with additional features
     """
     df = movies_df.copy()
     
@@ -26,15 +28,37 @@ def preprocess_movies(movies_df: pd.DataFrame) -> pd.DataFrame:
     # Ensure movieId is integer
     df['movieId'] = df['movieId'].astype(int)
     
+    # Add derived features if ratings are provided
+    if ratings_df is not None:
+        # Calculate movie popularity (number of ratings)
+        movie_popularity = ratings_df.groupby('movieId').agg({
+            'rating': ['count', 'mean']
+        }).reset_index()
+        movie_popularity.columns = ['movieId', 'n_ratings', 'avg_rating']
+        
+        # Merge with movies
+        df = df.merge(movie_popularity, on='movieId', how='left')
+        df['n_ratings'] = df['n_ratings'].fillna(0).astype(int)
+        df['avg_rating'] = df['avg_rating'].fillna(0.0)
+        
+        # Normalize popularity (0-1 scale)
+        if df['n_ratings'].max() > 0:
+            df['popularity_score'] = (df['n_ratings'] - df['n_ratings'].min()) / (
+                df['n_ratings'].max() - df['n_ratings'].min()
+            )
+        else:
+            df['popularity_score'] = 0.0
+    
     return df
 
 
-def preprocess_ratings(ratings_df: pd.DataFrame) -> pd.DataFrame:
+def preprocess_ratings(ratings_df: pd.DataFrame, min_ratings_per_user: int = 5) -> pd.DataFrame:
     """
-    Preprocess ratings data.
+    Preprocess ratings data with cleaning and filtering.
     
     Args:
         ratings_df: Raw ratings dataframe
+        min_ratings_per_user: Minimum number of ratings per user (filters sparse users)
         
     Returns:
         Preprocessed ratings dataframe
@@ -51,6 +75,11 @@ def preprocess_ratings(ratings_df: pd.DataFrame) -> pd.DataFrame:
     
     # Remove invalid ratings (should be between 0.5 and 5.0)
     df = df[(df['rating'] >= 0.5) & (df['rating'] <= 5.0)]
+    
+    # Filter sparse users (users with too few ratings)
+    user_rating_counts = df.groupby('userId').size()
+    active_users = user_rating_counts[user_rating_counts >= min_ratings_per_user].index
+    df = df[df['userId'].isin(active_users)]
     
     return df
 
@@ -76,11 +105,12 @@ def create_user_item_matrix(ratings_df: pd.DataFrame) -> pd.DataFrame:
 
 def get_user_features(ratings_df: pd.DataFrame, movies_df: pd.DataFrame) -> pd.DataFrame:
     """
-    Extract user features for clustering:
+    Extract comprehensive user features for clustering:
     - Average rating
-    - Number of movies rated
+    - Number of movies rated (activity level)
     - Rating variance
     - Preferred genres (top 3)
+    - User activity level (categorical)
     
     Args:
         ratings_df: Ratings dataframe
@@ -95,6 +125,17 @@ def get_user_features(ratings_df: pd.DataFrame, movies_df: pd.DataFrame) -> pd.D
     
     user_stats.columns = ['userId', 'avg_rating', 'n_ratings', 'rating_std']
     user_stats['rating_std'] = user_stats['rating_std'].fillna(0)
+    
+    # Add user activity level (categorical feature)
+    def categorize_activity(n_ratings):
+        if n_ratings < 10:
+            return 'Low'
+        elif n_ratings < 50:
+            return 'Medium'
+        else:
+            return 'High'
+    
+    user_stats['user_activity_level'] = user_stats['n_ratings'].apply(categorize_activity)
     
     # Merge with movies to get genre preferences
     ratings_with_genres = ratings_df.merge(
@@ -142,4 +183,3 @@ def normalize_features(features_df: pd.DataFrame, feature_cols: list) -> Tuple[p
     df[feature_cols] = scaler.fit_transform(df[feature_cols])
     
     return df, scaler
-

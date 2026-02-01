@@ -107,7 +107,8 @@ class CollaborativeFilteringRecommender:
     
     def recommend_for_user(self, user_id: int, movies_df: pd.DataFrame,
                           n_recommendations: int = 10,
-                          exclude_rated: bool = True) -> pd.DataFrame:
+                          exclude_rated: bool = True,
+                          include_explanation: bool = False) -> pd.DataFrame:
         """
         Recommend movies for a user.
         
@@ -150,8 +151,31 @@ class CollaborativeFilteringRecommender:
         # Create results dataframe
         results = pd.DataFrame(predictions)
         results = results.sort_values('predicted_rating', ascending=False)
+        results = results.head(n_recommendations)
         
-        return results.head(n_recommendations)
+        # Add explanations if requested
+        if include_explanation:
+            explanations = []
+            for _, row in results.iterrows():
+                pred_rating = row['predicted_rating']
+                if pred_rating >= 4.5:
+                    explanations.append(
+                        f"High predicted rating: {pred_rating:.2f}/5.0 "
+                        f"(based on similar users' preferences)"
+                    )
+                elif pred_rating >= 3.5:
+                    explanations.append(
+                        f"Moderate predicted rating: {pred_rating:.2f}/5.0 "
+                        f"(users with similar taste liked this)"
+                    )
+                else:
+                    explanations.append(
+                        f"Predicted rating: {pred_rating:.2f}/5.0 "
+                        f"(based on collaborative patterns)"
+                    )
+            results['explanation'] = explanations
+        
+        return results
     
     def evaluate(self) -> dict:
         """
