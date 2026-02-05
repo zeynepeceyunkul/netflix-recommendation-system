@@ -59,19 +59,53 @@ This project **DOES NOT use real Netflix data**. Netflix's user data, ratings, a
 
 This project implements three complementary recommendation approaches commonly used in production systems:
 
-1. **Content-Based Filtering**: Recommends movies based on genre similarity using TF-IDF vectorization and cosine similarity
-2. **Collaborative Filtering**: Uses Matrix Factorization (SVD) to predict ratings based on user behavior patterns
-3. **User Segmentation**: Groups users into clusters using K-Means and recommends movies based on cluster preferences
+1. **Content-Based Filtering**: Recommends by **semantic similarity** (genres, themes, emotional tone, narrative style, cinematography) using TF-IDF and cosine similarity, with diversity-aware ranking.
+2. **Collaborative Filtering**: Matrix Factorization (SVD) to predict ratings from user behavior.
+3. **User Segmentation**: K-Means on user features; recommendations from the user's cluster.
+4. **Popular**: Fallback by global popularity (rating count and average).
 
 ### Why This is "Netflix-like"
 
-While we don't use Netflix's data, we simulate their recommendation logic:
+We simulate recommendation *logic*, not Netflix data: hybrid strategies, content and collaborative signals, and explainable suggestions. We do **not** use "Because you watched X" as a claim about real watch history; we phrase recommendations as **"Movies with similar themes, mood, and cinematic style"** to reflect how similarity is actually computed.
 
-- **Hybrid Approach**: Netflix combines multiple recommendation strategies (as we do)
-- **Content Analysis**: Netflix analyzes movie features (genres, actors, directors) - we use genres
-- **Collaborative Patterns**: Netflix finds users with similar tastes - we use SVD matrix factorization
-- **Personalization**: Netflix personalizes for each user - we do the same with user-specific recommendations
-- **Explainability**: Netflix shows "Because you watched..." - we provide similar explanations
+---
+
+## Why Naive Genre-Only Systems Fail
+
+- **Single-label collapse**: One genre per movie yields trivial, repetitive recommendations (e.g. all "Children").
+- **No notion of mood or theme**: Two "Drama" films can be thematically opposite; genre alone cannot capture that.
+- **No diversity**: Top-N by similarity often returns near-duplicates (same genre combo).
+- **Weak explainability**: "Similar genre" is vague; users trust "similar themes and mood" more when it is grounded in richer features.
+
+This project therefore **enriches** movies with derived **themes**, **emotional tone**, **narrative style**, and **cinematography style** (from genre combinations and optional metadata). Similarity is computed in this **semantic feature space**, and ranking is **diversity-aware** (capped per genre combination) so results feel thematically coherent but not identical.
+
+---
+
+## How Semantic Features Improve Quality
+
+- **Themes** (e.g. isolation, revenge, coming-of-age) are derived from genres and combined so that "Sci-Fi | Drama" contributes both sci-fi and drama themes.
+- **Emotional tone** (dark, hopeful, melancholic, intense) and **narrative style** (slow-burn, action-driven) are mapped from genres and used in the same TF-IDF text as genres.
+- **Cosine similarity** is computed on this combined text, so recommendations align on themes and mood, not only on a single genre label.
+- **Diversity**: We limit how many recommendations can share the exact same genre combination, so the list is not 10 copies of the same "type" of movie.
+
+---
+
+## UI Design Choices and Honesty
+
+- **No Streamlit selectbox for primary choices**: Dropdown arrows are small and easy to misclick; dropdowns can close on click outside. We use **radio buttons** (for movie choice) and **number inputs** (for user ID) so the entire control is clearly clickable and behavior is predictable.
+- **Honest copy**: We avoid "Because you watched X" (which implies watch history we do not have). We use **"Movies with similar themes, mood, and cinematic style to X"**.
+- **Optional "Why was this recommended?"** toggle: When enabled, each card shows overlapping themes, mood, and similarity score so the logic is transparent and defensible in review.
+
+---
+
+## Validation and Sanity Check
+
+To check that recommendations are thematically and emotionally coherent:
+
+1. Run the app and pick a **Content-Based** method.
+2. Choose a movie with a clear profile (e.g. Sci-Fi + Drama).
+3. Enable **"Why was this recommended?"** and inspect overlapping themes and mood on each card.
+4. Optionally run: `python src/validate_recommendations.py --movie "Your Movie Title" --n 10` to print top-N recommendations and quality metrics (genre overlap, average similarity). Use this to document findings (e.g. "Top 10 share themes X, Y and mood Z as expected").
 
 ---
 

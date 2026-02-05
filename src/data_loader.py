@@ -7,18 +7,42 @@ import pandas as pd
 import numpy as np
 from typing import Tuple, Optional
 import os
+import re
 
 
-def generate_mock_movies(n_movies: int = 1000) -> pd.DataFrame:
+# Extra keywords per genre for plot_keywords (richer data for TF-IDF and display)
+GENRE_PLOT_KEYWORDS = {
+    'Action': ['fight', 'chase', 'explosion', 'hero', 'rescue', 'mission', 'combat', 'stunt'],
+    'Adventure': ['quest', 'treasure', 'journey', 'exploration', 'discovery', 'map', 'expedition'],
+    'Animation': ['cartoon', 'family', 'magic', 'creature', 'quest', 'friendship', 'dream'],
+    'Children': ['family', 'friendship', 'learning', 'play', 'animal', 'adventure', 'fun'],
+    'Comedy': ['funny', 'joke', 'wedding', 'friends', 'misunderstanding', 'romance', 'party'],
+    'Crime': ['heist', 'police', 'gangster', 'murder', 'investigation', 'prison', 'revenge'],
+    'Documentary': ['real', 'history', 'nature', 'interview', 'archive', 'society', 'science'],
+    'Drama': ['family', 'death', 'love', 'conflict', 'decision', 'loss', 'redemption'],
+    'Fantasy': ['magic', 'dragon', 'wizard', 'kingdom', 'quest', 'myth', 'creature'],
+    'Film-Noir': ['detective', 'femme fatale', 'night', 'city', 'crime', 'moral', 'shadow'],
+    'Horror': ['ghost', 'monster', 'haunted', 'nightmare', 'curse', 'survival', 'fear'],
+    'Musical': ['song', 'dance', 'stage', 'romance', 'performance', 'music', 'dream'],
+    'Mystery': ['detective', 'clue', 'secret', 'murder', 'puzzle', 'reveal', 'suspense'],
+    'Romance': ['love', 'kiss', 'wedding', 'heartbreak', 'meet', 'passion', 'relationship'],
+    'Sci-Fi': ['space', 'robot', 'future', 'alien', 'technology', 'time travel', 'planet'],
+    'Thriller': ['suspense', 'chase', 'conspiracy', 'danger', 'escape', 'twist', 'deadline'],
+    'War': ['soldier', 'battle', 'military', 'sacrifice', 'enemy', 'front', 'survival'],
+    'Western': ['cowboy', 'sheriff', 'horse', 'desert', 'outlaw', 'duel', 'frontier'],
+}
+
+
+def generate_mock_movies(n_movies: int = 2000) -> pd.DataFrame:
     """
-    Generate a mock movies dataset with genres and titles.
+    Generate a mock movies dataset with genres, titles, year, and plot_keywords.
     Uses realistic MovieLens-style titles and ensures multi-genre diversity.
     
     Args:
         n_movies: Number of movies to generate
         
     Returns:
-        DataFrame with columns: movieId, title, genres
+        DataFrame with columns: movieId, title, genres, year, plot_keywords
     """
     np.random.seed(42)
     
@@ -85,10 +109,22 @@ def generate_mock_movies(n_movies: int = 1000) -> pd.DataFrame:
                 title = f"{original_title} {counter}"
                 counter += 1
         
+        # plot_keywords: 4-6 keywords from selected genres for richer semantic content
+        all_kw = []
+        for g in selected_genres:
+            pool = GENRE_PLOT_KEYWORDS.get(g, ['story', 'drama'])
+            n_pick = min(2, len(pool))
+            all_kw.extend(np.random.choice(pool, size=n_pick, replace=False).tolist())
+        all_kw = list(dict.fromkeys(all_kw))[:6]  # dedupe, cap 6
+        plot_keywords = ' '.join(all_kw) if all_kw else selected_genres[0].lower()
+        year = int(np.random.randint(1985, 2025))
+
         movies.append({
             'movieId': i,
             'title': title,
-            'genres': genres
+            'genres': genres,
+            'year': year,
+            'plot_keywords': plot_keywords,
         })
     
     return pd.DataFrame(movies)
@@ -211,12 +247,31 @@ def load_movies(file_path: Optional[str] = None) -> pd.DataFrame:
         df = pd.read_csv(file_path)
         # Ensure multi-genre for existing data
         if 'genres' in df.columns:
-            # Count genres per movie
             genre_counts = df['genres'].str.count('\|') + 1
-            # Filter out single-genre movies or add secondary genre
             single_genre_mask = genre_counts == 1
             if single_genre_mask.any():
                 print(f"Warning: {single_genre_mask.sum()} movies have only one genre. Consider enriching data.")
+        # Enrich with year and plot_keywords if missing (more detailed data)
+        if 'year' not in df.columns:
+            def extract_year(t):
+                if pd.isna(t):
+                    return 2000
+                m = re.search(r'\((\d{4})\)', str(t))
+                return int(m.group(1)) if m and 1900 <= int(m.group(1)) <= 2030 else 2000
+            df['year'] = df['title'].astype(str).map(extract_year)
+        if 'plot_keywords' not in df.columns and 'genres' in df.columns:
+            np.random.seed(42)
+            def genres_to_keywords(genres_str):
+                if pd.isna(genres_str):
+                    return 'drama story'
+                gs = [g.strip() for g in str(genres_str).split('|') if g.strip()]
+                kw = []
+                for g in gs[:4]:
+                    pool = GENRE_PLOT_KEYWORDS.get(g, ['story'])
+                    n_pick = min(2, len(pool))
+                    kw.extend(np.random.choice(pool, size=n_pick, replace=False).tolist())
+                return ' '.join(list(dict.fromkeys(kw))[:6]) if kw else 'drama'
+            df['plot_keywords'] = df['genres'].map(genres_to_keywords)
         return df
     else:
         print(f"Movies file not found at {file_path}. Generating improved mock data...")

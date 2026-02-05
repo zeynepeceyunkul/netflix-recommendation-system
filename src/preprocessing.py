@@ -1,6 +1,6 @@
 """
 Data preprocessing utilities for the recommendation system.
-Includes feature engineering and data cleaning.
+Includes feature engineering, data cleaning, and semantic enrichment.
 """
 
 import pandas as pd
@@ -8,10 +8,17 @@ import numpy as np
 from sklearn.preprocessing import StandardScaler
 from typing import Tuple
 
+try:
+    from semantic_features import enrich_movies_semantic
+except ImportError:
+    enrich_movies_semantic = None
+
 
 def preprocess_movies(movies_df: pd.DataFrame, ratings_df: pd.DataFrame = None) -> pd.DataFrame:
     """
-    Preprocess movies data with derived features.
+    Preprocess movies data with derived features and semantic enrichment.
+    Adds themes, emotional_tone, narrative_style, cinematography_style,
+    pacing, target_audience, and semantic_text when semantic_features is available.
     
     Args:
         movies_df: Raw movies dataframe
@@ -27,6 +34,10 @@ def preprocess_movies(movies_df: pd.DataFrame, ratings_df: pd.DataFrame = None) 
     
     # Ensure movieId is integer
     df['movieId'] = df['movieId'].astype(int)
+    
+    # Semantic enrichment: themes, tone, narrative style, etc.
+    if enrich_movies_semantic is not None:
+        df = enrich_movies_semantic(df)
     
     # Add derived features if ratings are provided
     if ratings_df is not None:
